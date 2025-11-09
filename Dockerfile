@@ -31,4 +31,4 @@ ENV GALLEY_AGENT_ID=""
 EXPOSE 8080
 
 # Run the application
-ENTRYPOINT ["sh", "-c", "java -DGALLEY_AGENT_ID=${GALLEY_AGENT_ID} -conf ${CONF_JSON_PATH:-/app/conf.json} -jar /app/agent.jar"]
+ENTRYPOINT ["sh", "-c", "java -DGALLEY_AGENT_ID=${GALLEY_AGENT_ID} -jar /app/agent.jar -conf ${CONF_JSON_PATH:-/app/conf.json}"]
