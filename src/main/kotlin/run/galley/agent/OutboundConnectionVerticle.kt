@@ -1,6 +1,7 @@
 package run.galley.agent
 
 import io.vertx.core.buffer.Buffer
+import io.vertx.core.eventbus.Message
 import io.vertx.core.http.WebSocket
 import io.vertx.core.http.WebSocketClient
 import io.vertx.core.http.WebSocketClientOptions
@@ -13,6 +14,7 @@ import io.vertx.kotlin.coroutines.CoroutineEventBusSupport
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.launch
+import nl.clicqo.ext.getUUID
 import java.net.URI
 import java.util.UUID
 
@@ -24,7 +26,7 @@ class OutboundConnectionVerticle :
   private var reconnectTimerId: Long? = null
   private var backoff = 1000L
   private lateinit var wsUrl: String
-  private lateinit var agentId: String
+  private lateinit var vesselEngineId: String
 
   companion object {
     const val PLATFORM_OUT = "outbound-connection"
@@ -34,18 +36,19 @@ class OutboundConnectionVerticle :
     super.start()
     println("[OutboundConnectionVerticle] Starting...")
 
-    wsUrl = "${config.getString("platform_ws_url", "wss://api.galley.run")}/agents/connect"
-    agentId = config.getString("agent_id", UUID.randomUUID().toString())
+    wsUrl = "${config.getJsonObject("galley", JsonObject()).getString("platformWsUrl", "wss://api.galley.run")}/agents/connect"
+    vesselEngineId = config.getJsonObject("galley", JsonObject()).getString("vesselEngineId") ?: throw Exception("vesselEngineId missing")
     println("[OutboundConnectionVerticle] WS URL: $wsUrl")
-    println("[OutboundConnectionVerticle] Agent ID: $agentId")
+    println("[OutboundConnectionVerticle] Vessel Engine ID: $vesselEngineId")
 
     val opts = WebSocketClientOptions().setSsl(wsUrl.startsWith("wss://"))
-    config.getString("tls_ca_pem")?.let { opts.trustOptions = PemTrustOptions().addCertValue(Buffer.buffer(it)) }
-    if (config.getString("tls_client_cert_pem") != null && config.getString("tls_client_key_pem") != null) {
+    val tlsConfig = config.getJsonObject("tls", JsonObject())
+    tlsConfig.getString("caPem")?.let { opts.trustOptions = PemTrustOptions().addCertValue(Buffer.buffer(it)) }
+    if (tlsConfig.getString("clientCertPem") != null && tlsConfig.getString("clientKeyPem") != null) {
       opts.keyCertOptions =
         PemKeyCertOptions()
-          .addCertValue(Buffer.buffer(config.getString("tls_client_cert_pem")))
-          .addKeyValue(Buffer.buffer(config.getString("tls_client_key_pem")))
+          .addCertValue(Buffer.buffer(tlsConfig.getString("clientCertPem")))
+          .addKeyValue(Buffer.buffer(tlsConfig.getString("clientKeyPem")))
     }
     // TODO: FIX THIS TRUST ALL MARK
     opts.isTrustAll = true
@@ -53,27 +56,25 @@ class OutboundConnectionVerticle :
     client = vertx.createWebSocketClient(opts)
     println("[OutboundConnectionVerticle] WebSocket client created")
 
-    vertx.eventBus().coConsumer(PLATFORM_OUT) { message ->
-      println("[OutboundConnectionVerticle] Sending message to platform: ${message.body()}")
-      ws?.writeTextMessage(message.body())?.coAwait()
-    }
+    vertx.eventBus().coConsumer(PLATFORM_OUT, handler = ::sendWsMessage)
 
     // Start initial connection attempt
     scheduleConnect()
   }
 
   private fun scheduleConnect() {
-    reconnectTimerId = vertx.setTimer(backoff) {
-      launch {
-        attemptConnect()
+    reconnectTimerId =
+      vertx.setTimer(backoff) {
+        launch {
+          attemptConnect()
+        }
       }
-    }
   }
 
   private suspend fun attemptConnect() {
     try {
       println("[OutboundConnectionVerticle] Attempting to connect...")
-      connect(wsUrl, agentId)
+      connect(wsUrl, vesselEngineId)
       backoff = 1000L
       println("[OutboundConnectionVerticle] Connected successfully")
     } catch (e: Throwable) {
@@ -81,6 +82,14 @@ class OutboundConnectionVerticle :
       backoff = (backoff * 2).coerceAtMost(30_000L)
       scheduleConnect()
     }
+  }
+
+  private suspend fun sendWsMessage(message: Message<JsonObject>) {
+    val json = message.body().encode()
+    println("[OutboundConnectionVerticle] Sending message to platform: $json")
+    ws
+      ?.writeTextMessage(json)
+      ?.coAwait()
   }
 
   override suspend fun stop() {
@@ -91,17 +100,19 @@ class OutboundConnectionVerticle :
 
   private suspend fun connect(
     url: String,
-    agentId: String,
+    vesselEngineId: String,
   ) {
     val uri = URI(url)
     println(
-      "[OutboundConnectionVerticle] Connecting to ${uri.host}:${if (uri.port > 0) {
-        uri.port
-      } else if (uri.scheme == "wss") {
-        443
-      } else {
-        80
-      }}",
+      "[OutboundConnectionVerticle] Connecting to ${uri.host}:${
+        if (uri.port > 0) {
+          uri.port
+        } else if (uri.scheme == "wss") {
+          443
+        } else {
+          80
+        }
+      }",
     )
     val wsc =
       client
@@ -118,9 +129,9 @@ class OutboundConnectionVerticle :
               },
             ).setSsl(uri.scheme == "wss")
             .setURI(uri.rawPath + (if (uri.rawQuery != null) "?${uri.rawQuery}" else ""))
-            .putHeader("X-Agent-Id", agentId)
+            .putHeader("X-Vessel-Engine-Id", vesselEngineId)
             .apply {
-              config.getString("BOOTSTRAP_TOKEN")?.let { putHeader("Authorization", "Bearer $it") }
+              config.getJsonObject("galley", JsonObject()).getString("agentToken")?.let { putHeader("Authorization", "Bearer $it") }
             },
         ).coAwait()
 
@@ -141,9 +152,9 @@ class OutboundConnectionVerticle :
         .put(
           "payload",
           JsonObject()
-            .put("agentId", agentId)
+            .put("vesselEngineId", vesselEngineId)
             .put("capabilities", JsonArray().add("k8s.getNodes").add("k8s.apply"))
-            .put("credits", config.getInteger("AGENT_MAX_PARALLEL", 4)),
+            .put("credits", config.getInteger("maxParallel", 4)),
         ).encode()
     println("[OutboundConnectionVerticle] Sending hello message: $hello")
     wsc.writeTextMessage(hello)
@@ -173,17 +184,25 @@ class OutboundConnectionVerticle :
     wsc.textMessageHandler { text ->
       println("[OutboundConnectionVerticle] Received message: $text")
       val obj = JsonObject(text)
-      when (obj.getString("type")) {
-        "cmd.submit" -> {
-          println("[OutboundConnectionVerticle] Routing cmd.submit to agent.cmd.exec")
-          vertx.eventBus().send("agent.cmd.exec", text)
-        }
+      val action = obj.getString("action")
+      val payload = obj.getJsonObject("payload")
+      val replyTo = obj.getString("replyTo")
+      val vesselEngineId = obj.getUUID("vesselEngineId")
+      val requiredVesselEngineId = config.getJsonObject("galley").getUUID("vesselEngineId")
+      if (vesselEngineId == null || vesselEngineId != requiredVesselEngineId) {
+        println("[OutboundConnectionVerticle] Received invalid vessel engine ID: $vesselEngineId (instead of $requiredVesselEngineId)")
+        return@textMessageHandler
+      }
+
+      when (action) {
         "agent.setMaxParallel" -> {
           println("[OutboundConnectionVerticle] Publishing agent.setMaxParallel")
-          vertx.eventBus().publish("agent.ctrl.maxParallel", obj)
+          vertx.eventBus().publish("agent.ctrl.maxParallel", JsonObject().put("payload", payload))
         }
+
         else -> {
-          println("[OutboundConnectionVerticle] Unknown message type: ${obj.getString("type")}")
+          println("[OutboundConnectionVerticle] Routing cmd.submit to agent.cmd.exec")
+          vertx.eventBus().send("action.$action", JsonObject().put("payload", payload).put("replyTo", replyTo))
         }
       }
     }
