@@ -37,7 +37,9 @@ class OutboundConnectionVerticle :
     println("[OutboundConnectionVerticle] Starting...")
 
     wsUrl = "${config.getJsonObject("galley", JsonObject()).getString("platformWsUrl", "wss://api.galley.run")}/agents/connect"
-    vesselEngineId = config.getJsonObject("galley", JsonObject()).getString("vesselEngineId") ?: throw Exception("vesselEngineId missing")
+    vesselEngineId =
+      config.getJsonObject("galley", JsonObject()).getString("vesselEngineId", System.getProperty("GALLEY_AGENT_ID"))
+        ?: throw Exception("vesselEngineId missing")
     println("[OutboundConnectionVerticle] WS URL: $wsUrl")
     println("[OutboundConnectionVerticle] Vessel Engine ID: $vesselEngineId")
 
