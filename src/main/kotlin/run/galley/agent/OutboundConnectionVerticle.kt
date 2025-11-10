@@ -36,6 +36,8 @@ class OutboundConnectionVerticle :
     super.start()
     println("[OutboundConnectionVerticle] Starting...")
 
+    val caPath = "/etc/ssl/certs/galley-rootCA.pem"
+
     wsUrl = "${config.getJsonObject("galley", JsonObject()).getString("platformWsUrl", "wss://api.galley.run")}/agents/connect"
     vesselEngineId =
       config.getJsonObject("galley", JsonObject()).getString("vesselEngineId", System.getProperty("GALLEY_AGENT_ID"))
@@ -43,7 +45,7 @@ class OutboundConnectionVerticle :
     println("[OutboundConnectionVerticle] WS URL: $wsUrl")
     println("[OutboundConnectionVerticle] Vessel Engine ID: $vesselEngineId")
 
-    val opts = WebSocketClientOptions().setSsl(wsUrl.startsWith("wss://"))
+    val opts = WebSocketClientOptions().setSsl(wsUrl.startsWith("wss://")).setTrustOptions(PemTrustOptions().addCertPath(caPath))
     val tlsConfig = config.getJsonObject("tls", JsonObject())
     tlsConfig.getString("caPem")?.let { opts.trustOptions = PemTrustOptions().addCertValue(Buffer.buffer(it)) }
     if (tlsConfig.getString("clientCertPem") != null && tlsConfig.getString("clientKeyPem") != null) {
