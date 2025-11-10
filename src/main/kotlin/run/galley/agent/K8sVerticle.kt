@@ -2,6 +2,7 @@ package run.galley.agent
 
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.eventbus.Message
+import io.vertx.core.file.FileSystemException
 import io.vertx.core.json.JsonObject
 import io.vertx.core.net.PemTrustOptions
 import io.vertx.ext.web.client.WebClient
@@ -10,7 +11,6 @@ import io.vertx.kotlin.coroutines.CoroutineEventBusSupport
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.coAwait
 import run.galley.agent.OutboundConnectionVerticle.Companion.PLATFORM_OUT
-import java.io.File
 import java.util.UUID
 
 class K8sVerticle :
@@ -28,7 +28,17 @@ class K8sVerticle :
 
   override suspend fun start() {
     val saPath = "/var/run/secrets/kubernetes.io/serviceaccount"
-    token = File("$saPath/token").readText().trim()
+    try {
+      token =
+        vertx
+          .fileSystem()
+          .readFile("$saPath/token")
+          .coAwait()
+          .toString()
+          .trim()
+    } catch (e: FileSystemException) {
+      throw Exception("Service account token could not be read", e)
+    }
     val k8sCA = PemTrustOptions().addCertPath("$saPath/ca.crt")
     k8s =
       WebClient.create(
@@ -45,8 +55,11 @@ class K8sVerticle :
 //      val newMax = obj.getJsonObject("payload")?.getInteger("value") ?: maxParallel
 //      maxParallel = newMax
 //    }
+
     vertx.eventBus().coConsumer(GET_NODES, handler = ::getNodes)
     vertx.eventBus().coConsumer(APPLY, handler = ::apply)
+
+    println("K8sVerticle started")
   }
 
   private suspend fun getNodes(message: Message<JsonObject>) {

@@ -45,17 +45,8 @@ class OutboundConnectionVerticle :
     println("[OutboundConnectionVerticle] WS URL: $wsUrl")
     println("[OutboundConnectionVerticle] Vessel Engine ID: $vesselEngineId")
 
-    val opts = WebSocketClientOptions().setSsl(wsUrl.startsWith("wss://")).setTrustOptions(PemTrustOptions().addCertPath(caPath))
-    val tlsConfig = config.getJsonObject("tls", JsonObject())
-    tlsConfig.getString("caPem")?.let { opts.trustOptions = PemTrustOptions().addCertValue(Buffer.buffer(it)) }
-    if (tlsConfig.getString("clientCertPem") != null && tlsConfig.getString("clientKeyPem") != null) {
-      opts.keyCertOptions =
-        PemKeyCertOptions()
-          .addCertValue(Buffer.buffer(tlsConfig.getString("clientCertPem")))
-          .addKeyValue(Buffer.buffer(tlsConfig.getString("clientKeyPem")))
-    }
-    // TODO: FIX THIS TRUST ALL MARK
-    opts.isTrustAll = true
+    val opts = WebSocketClientOptions().setSsl(wsUrl.startsWith("wss://"))
+    opts.trustOptions = PemTrustOptions().addCertPath(caPath)
 
     client = vertx.createWebSocketClient(opts)
     println("[OutboundConnectionVerticle] WebSocket client created")
@@ -205,7 +196,7 @@ class OutboundConnectionVerticle :
         }
 
         else -> {
-          println("[OutboundConnectionVerticle] Routing cmd.submit to agent.cmd.exec")
+          println("[OutboundConnectionVerticle] Routing cmd.submit to action.$action")
           vertx.eventBus().send("action.$action", JsonObject().put("payload", payload).put("replyTo", replyTo))
         }
       }

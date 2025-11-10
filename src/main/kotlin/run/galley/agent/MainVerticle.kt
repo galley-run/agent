@@ -9,9 +9,7 @@ class MainVerticle : CoroutineVerticle() {
     super.start()
 
     vertx.deployVerticle(OutboundConnectionVerticle(), deploymentOptionsOf(config)).coAwait()
-    if (config.getBoolean("kubernetes", true)) {
-      vertx.deployVerticle(K8sVerticle(), deploymentOptionsOf(config)).coAwait()
-    }
+    vertx.deployVerticle(K8sVerticle(), deploymentOptionsOf(config)).coAwait()
     vertx.deployVerticle(HealthHttpVerticle(), deploymentOptionsOf(config)).coAwait()
   }
 }
