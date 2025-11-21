@@ -1,0 +1,77 @@
+name: Release Helm Charts
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.13.0
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Update Chart version
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          sed -i "s/^version:.*/version: $VERSION/" helm/galley-agent/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" helm/galley-agent/Chart.yaml
+          cat helm/galley-agent/Chart.yaml
+
+      - name: Commit version changes
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          git checkout main
+          git add helm/galley-agent/Chart.yaml
+          git commit -m "Update chart version to $VERSION [skip ci]" || echo "No changes to commit"
+          git push origin main || echo "Nothing to push"
+
+      - name: Package Helm Chart
+        run: |
+          helm package helm/galley-agent -d .cr-release-packages
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          TAG="v${VERSION}"
+          gh release create "$TAG" .cr-release-packages/galley-agent-${VERSION}.tgz \
+            --title "Release v${VERSION}" \
+            --notes "Release version ${VERSION} of galley-agent Helm chart" || echo "Release already exists"
+
+      - name: Update Helm repo index
+        run: |
+          git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
+          mkdir -p charts
+          mv .cr-release-packages/*.tgz charts/ 2>/dev/null || true
+          helm repo index charts --url https://galley-run.github.io/agent/charts
+          mv charts/index.yaml .
+          git add charts/*.tgz index.yaml
+          git commit -m "Update Helm repository index" || echo "No changes"
+          git push origin gh-pages

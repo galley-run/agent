@@ -1,0 +1,13 @@
+{
+  "galley": {
+    "platformWsUrl": "wss://api.galley.dev",
+    "agentToken": null,
+    "vesselEngineId": "uuid"
+  },
+  "maxParallel": 4,
+  "tls": {
+    "caPem": "",
+    "clientCertPem": "",
+    "clientKeyPem": ""
+  }
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Galley Helm Charts Repository</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 { color: #333; }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .chart {
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Galley Helm Charts Repository</h1>
+
+    <h2>Usage</h2>
+    <pre>helm repo add galley https://galley-run.github.io/agent
+helm repo update
+helm search repo galley</pre>
+
+    <h2>Available Charts</h2>
+
+    <div class="chart">
+        <h3>galley-agent</h3>
+        <p>Kubernetes cluster agent for Galley platform</p>
+        <pre>helm install galley-agent galley/galley-agent -n galley --create-namespace</pre>
+    </div>
+
+    <h2>Documentation</h2>
+    <p>For more information about each chart, see the README in the chart directory.</p>
+</body>
+</html>

@@ -1,0 +1,20 @@
+apiVersion: v1
+entries:
+  galley-agent:
+  - apiVersion: v2
+    appVersion: 0.0.3
+    created: "2025-11-21T15:59:39.931620173Z"
+    description: A Helm chart for Galley Agent - Kubernetes cluster agent
+    digest: 590815cf6ff97884f079c97c1556308796a51effcecd6332de44f12f1fc84c06
+    keywords:
+    - galley
+    - agent
+    - kubernetes
+    maintainers:
+    - name: Galley Team
+    name: galley-agent
+    type: application
+    urls:
+    - https://galley-run.github.io/agent/charts/galley-agent-0.0.3.tgz
+    version: 0.0.3
+generated: "2025-11-21T15:59:39.930733939Z"
