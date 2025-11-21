@@ -2,10 +2,8 @@ name: Release Helm Charts
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'helm/**'
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 
 permissions:
@@ -30,9 +28,31 @@ jobs:
         with:
           version: v3.13.0
 
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Update Chart version
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          sed -i "s/^version:.*/version: $VERSION/" helm/galley-agent/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" helm/galley-agent/Chart.yaml
+          cat helm/galley-agent/Chart.yaml
+
+      - name: Commit version changes
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          git add helm/galley-agent/Chart.yaml
+          git commit -m "Update chart version to $VERSION [skip ci]" || echo "No changes to commit"
+          git push origin HEAD:main || echo "Nothing to push"
+
       - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.6.0
         with:
           charts_dir: helm
+          skip_existing: true
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
