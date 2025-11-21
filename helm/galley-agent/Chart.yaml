@@ -2,8 +2,8 @@ apiVersion: v2
 name: galley-agent
 description: A Helm chart for Galley Agent - Kubernetes cluster agent
 type: application
-version: 0.1.1
-appVersion: "1.0.0"
+version: 0.0.1
+appVersion: "0.0.1"
 keywords:
   - galley
   - agent
