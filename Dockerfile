@@ -29,6 +29,7 @@ ENV GALLEY_AGENT_ID=""
 
 # Expose port (adjust if needed based on your application)
 EXPOSE 8080
+EXPOSE 5005
 
 # Run the application
-ENTRYPOINT ["sh", "-c", "java -DGALLEY_AGENT_ID=${GALLEY_AGENT_ID} -jar /app/agent.jar -conf ${CONF_JSON_PATH:-/app/conf.json}"]
+ENTRYPOINT ["sh", "-c", "java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -DGALLEY_AGENT_ID=${GALLEY_AGENT_ID} -jar /app/agent.jar -conf ${CONF_JSON_PATH:-/app/conf.json}"]

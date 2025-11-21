@@ -1,0 +1,121 @@
+replicaCount: 1
+
+image:
+  repository: reg.galley.dev:5999/galley-run/agent
+  pullPolicy: Always
+  tag: "dev"
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "galley-agent"
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  enabled: false
+  type: ClusterIP
+  port: 8080
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 1000m
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+    scheme: HTTP
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+    scheme: HTTP
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 3
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 1
+
+terminationGracePeriodSeconds: 30
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Galley Agent Configuration
+galley:
+  agentId: "f273e641-4733-45c6-90ae-f0d9aa5019f6"
+  platformWsUrl: "wss://api.galley.dev"
+
+  # Host aliases for development/testing
+  hostAliases:
+    - ip: "192.168.1.167"
+      hostnames:
+        - "api.galley.dev"
+
+  # Root CA certificate for SSL
+  rootCA: |
+    -----BEGIN CERTIFICATE-----
+    MIIFNzCCA5+gAwIBAgIQBdApFCKdkCf4jAupq9KCwDANBgkqhkiG9w0BAQsFADCB
+    szEeMBwGA1UEChMVbWtjZXJ0IGRldmVsb3BtZW50IENBMUQwQgYDVQQLDDtwYXRy
+    aWNrQFBhdHJpY2tzLU1hY0Jvb2stUHJvLmxvY2FsIChQYXRyaWNrIHZhbiBNYXJz
+    YmVyZ2VuKTFLMEkGA1UEAwxCbWtjZXJ0IHBhdHJpY2tAUGF0cmlja3MtTWFjQm9v
+    ay1Qcm8ubG9jYWwgKFBhdHJpY2sgdmFuIE1hcnNiZXJnZW4pMB4XDTI1MTAyMzEw
+    MDgyMFoXDTM1MTAyMzEwMDgyMFowgbMxHjAcBgNVBAoTFW1rY2VydCBkZXZlbG9w
+    bWVudCBDQTFEMEIGA1UECww7cGF0cmlja0BQYXRyaWNrcy1NYWNCb29rLVByby5s
+    b2NhbCAoUGF0cmljayB2YW4gTWFyc2JlcmdlbikxSzBJBgNVBAMMQm1rY2VydCBw
+    YXRyaWNrQFBhdHJpY2tzLU1hY0Jvb2stUHJvLmxvY2FsIChQYXRyaWNrIHZhbiBN
+    YXJzYmVyZ2VuKTCCAaIwDQYJKoZIhvcNAQEBBQADggGPADCCAYoCggGBALPeV4QI
+    Mz+LC7KPbBVT1I8NGHIbEMwQvA/AQwA/E4edjvhgmjfifc9d7Z2f9VxpSv4PADJ+
+    Xi/fsMtbytO8gtTs7LhI6wryqBtXKFI48yR1iP4+b9RamzqkeP8DnOlwcQKBehzX
+    XVKO7ySsuwJtPcOJt1UZjQwaNZQcc5nr/kvy66v9Pm8fvGbue0iXEszjYvacG16o
+    /Dbnp/sInR6TE6Khp+5QwoannKyEw7mvpTgFgbkTzRQPXS+gfVcqeXFnQ1TN5U08
+    ZitrMuHC1vm2n3xwyZR/2rkPE3+ef+nzZmmI1VON68E5Xli76sGdQqCw8B8xOGNp
+    zeybk5Hvtiu5lNR8IT15L63cfYX9Ge40V0VnZUrmfL26p3IpR4V/edBHemevggPv
+    7TBQNFV2MbPqXODyI4uPRWZ4+FUsvrdhJk2vSnTjLmQ3FVQtxCHnwQk6IcuD+2dV
+    WYSAbj7+GiTqaVQA+ZyGVJi2J4mznOuB3ha9RmJwfI7/+gCuCTLJNrG90wIDAQAB
+    o0UwQzAOBgNVHQ8BAf8EBAMCAgQwEgYDVR0TAQH/BAgwBgEB/wIBADAdBgNVHQ4E
+    FgQUQdXS7wm1F2qZS1HwN1J1tKHqZIMwDQYJKoZIhvcNAQELBQADggGBAHt0CEGI
+    n+e65v1K56or87oKsSproOs07sZ0kXHVtFGbOHXYnmICcxs1ElmOo2hkmnmp8wR+
+    kWv2zhlv9V3qwbpFlQSG6AmHF4IWJ0M81LH2tO9N8jFbACfr+LqkhebhQk6iBDfX
+    XTX5UmAUv/0+0tZ88P3rjHhvmuevBww3V+YYphXX/vNxkFruUC7PZnNSogAL5LaY
+    xLoA+spUfE60uxb3R5GkA3pi9FhUjgquuNsN+lBjJK/cQvdHjjhws4FRrFidnqvE
+    THhHb1AHw8Ey6Rxoz/6uzjY999AtO2RKVBeejqkPM6lxJ6/SuQMIp+NvBVapyL78
+    3L6cN876DP6t0Fk1mlnop4XoJ/3sbOXHQs297CTwNet481+49MVCVxtY+QeFuYKh
+    yUs3K4CGS2zGeRTEsRqENr8ZeIJaN4jl5sRwolTpYLqyFTfB/ClnkYlw3ID9FGAn
+    R/CjnhJA2ujcqKfTw0B2WmOzPbsZSvEkLcuVcF3WNtl/J5s8RmZrCDQueA==
+    -----END CERTIFICATE-----
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+debug:
+  enabled: true
+  port: 5005

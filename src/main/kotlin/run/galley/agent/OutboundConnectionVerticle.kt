@@ -8,7 +8,6 @@ import io.vertx.core.http.WebSocketClientOptions
 import io.vertx.core.http.WebSocketConnectOptions
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import io.vertx.core.net.PemKeyCertOptions
 import io.vertx.core.net.PemTrustOptions
 import io.vertx.kotlin.coroutines.CoroutineEventBusSupport
 import io.vertx.kotlin.coroutines.CoroutineVerticle
@@ -28,6 +27,8 @@ class OutboundConnectionVerticle :
   private lateinit var wsUrl: String
   private lateinit var vesselEngineId: String
 
+  private var sessionId: String = UUID.randomUUID().toString()
+
   companion object {
     const val PLATFORM_OUT = "outbound-connection"
   }
@@ -38,12 +39,15 @@ class OutboundConnectionVerticle :
 
     val caPath = "/etc/ssl/certs/galley-rootCA.pem"
 
-    wsUrl = "${config.getJsonObject("galley", JsonObject()).getString("platformWsUrl", "wss://api.galley.run")}/agents/connect"
+    wsUrl = "${
+      config.getJsonObject("galley", JsonObject()).getString("platformWsUrl", "wss://api.galley.run")
+    }/agents/connect"
     vesselEngineId =
       config.getJsonObject("galley", JsonObject()).getString("vesselEngineId", System.getProperty("GALLEY_AGENT_ID"))
         ?: throw Exception("vesselEngineId missing")
     println("[OutboundConnectionVerticle] WS URL: $wsUrl")
     println("[OutboundConnectionVerticle] Vessel Engine ID: $vesselEngineId")
+    println("[OutboundConnectionVerticle] Session ID: $sessionId")
 
     val opts = WebSocketClientOptions().setSsl(wsUrl.startsWith("wss://"))
     opts.trustOptions = PemTrustOptions().addCertPath(caPath)
@@ -69,7 +73,7 @@ class OutboundConnectionVerticle :
   private suspend fun attemptConnect() {
     try {
       println("[OutboundConnectionVerticle] Attempting to connect...")
-      connect(wsUrl, vesselEngineId)
+      connect(wsUrl)
       backoff = 1000L
       println("[OutboundConnectionVerticle] Connected successfully")
     } catch (e: Throwable) {
@@ -93,10 +97,7 @@ class OutboundConnectionVerticle :
     super.stop()
   }
 
-  private suspend fun connect(
-    url: String,
-    vesselEngineId: String,
-  ) {
+  private suspend fun connect(url: String) {
     val uri = URI(url)
     println(
       "[OutboundConnectionVerticle] Connecting to ${uri.host}:${
@@ -125,13 +126,26 @@ class OutboundConnectionVerticle :
             ).setSsl(uri.scheme == "wss")
             .setURI(uri.rawPath + (if (uri.rawQuery != null) "?${uri.rawQuery}" else ""))
             .putHeader("X-Vessel-Engine-Id", vesselEngineId)
+            .putHeader("X-Session-ID", sessionId)
             .apply {
-              config.getJsonObject("galley", JsonObject()).getString("agentToken")?.let { putHeader("Authorization", "Bearer $it") }
+              config
+                .getJsonObject("galley", JsonObject())
+                .getString("agentToken")
+                ?.let { putHeader("Authorization", "Bearer $it") }
             },
         ).coAwait()
 
     this.ws = wsc
     println("[OutboundConnectionVerticle] WebSocket connection established")
+
+    wsc.exceptionHandler {
+      println("[OutboundConnectionVerticle] Connection failed: ${it.message}")
+//      scheduleConnect()
+    }
+
+    wsc.shutdownHandler {
+      println("[OutboundConnectionVerticle] Shutting down...")
+    }
 
     // Handle close and schedule reconnect
     wsc.closeHandler {
@@ -185,19 +199,27 @@ class OutboundConnectionVerticle :
       val vesselEngineId = obj.getUUID("vesselEngineId")
       val requiredVesselEngineId = config.getJsonObject("galley").getUUID("vesselEngineId")
       if (vesselEngineId == null || vesselEngineId != requiredVesselEngineId) {
-        println("[OutboundConnectionVerticle] Received invalid vessel engine ID: $vesselEngineId (instead of $requiredVesselEngineId)")
+        println(
+          "[OutboundConnectionVerticle] Received invalid vessel engine ID: " +
+            "$vesselEngineId (instead of $requiredVesselEngineId)",
+        )
         return@textMessageHandler
       }
 
       when (action) {
         "agent.setMaxParallel" -> {
           println("[OutboundConnectionVerticle] Publishing agent.setMaxParallel")
-          vertx.eventBus().publish("agent.ctrl.maxParallel", JsonObject().put("payload", payload))
+          vertx
+            .eventBus()
+            .publish("agent.ctrl.maxParallel", JsonObject().put("id", vesselEngineId.toString()).put("payload", payload))
         }
 
         else -> {
           println("[OutboundConnectionVerticle] Routing cmd.submit to action.$action")
-          vertx.eventBus().send("action.$action", JsonObject().put("payload", payload).put("replyTo", replyTo))
+          vertx.eventBus().send(
+            "action.$action",
+            JsonObject().put("id", vesselEngineId.toString()).put("payload", payload).put("replyTo", replyTo),
+          )
         }
       }
     }

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "galley-agent.fullname" . }}-config
+  labels:
+    {{- include "galley-agent.labels" . | nindent 4 }}
+data:
+  GALLEY_AGENT_ID: {{ .Values.galley.agentId | quote }}
+  conf.json: |
+    {
+      "galley": {
+        "platformWsUrl": {{ .Values.galley.platformWsUrl | quote }},
+        "vesselEngineId": {{ .Values.galley.agentId | quote }}
+      }
+    }
+  galley-rootCA.pem: |
+{{ .Values.galley.rootCA | indent 4 }}
