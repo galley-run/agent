@@ -1,8 +1,8 @@
 package run.galley.agent
 
-import io.vertx.core.buffer.Buffer
 import io.vertx.core.eventbus.Message
 import io.vertx.core.file.FileSystemException
+import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.core.net.PemTrustOptions
 import io.vertx.ext.web.client.WebClient
@@ -11,6 +11,7 @@ import io.vertx.kotlin.coroutines.CoroutineEventBusSupport
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.coAwait
 import run.galley.agent.OutboundConnectionVerticle.Companion.PLATFORM_OUT
+import run.galley.agent.k8s.K8sResourceParser
 import java.util.UUID
 
 class K8sVerticle :
@@ -79,18 +80,40 @@ class K8sVerticle :
     val obj = message.body()
     val id = obj.getString("id")
     val payload = obj.getJsonObject("payload", JsonObject())
-    val ns = payload.getString("namespace", "galley")
-    val manifest = payload.getString("manifest") ?: ""
-    val r =
-      k8s
-        .patch(443, "kubernetes.default.svc", "/apis/apps/v1/namespaces/$ns/deployments")
-        .putHeader("Authorization", "Bearer $token")
-        .putHeader("Content-Type", "application/apply-patch+yaml")
-        .putHeader("Accept", "application/json")
-        .putHeader("X-Applying-Agent", "galley-agent")
-        .sendBuffer(Buffer.buffer(manifest))
-        .coAwait()
-    sendDone(id, obj.getString("replyTo"), r.statusCode() in 200..299, r.bodyAsString())
+    val manifests = payload.getJsonArray("manifests", JsonArray())
+
+    repeat(manifests.count()) {
+      val manifest = manifests.getJsonObject(it)
+      val resource = K8sResourceParser().build(manifest)
+
+      val createResponse =
+        k8s
+          .postAbs(resource.postUrl)
+          //          .patch(443, "kubernetes.default.svc", "/apis/apps/v1/namespaces/$ns/deployments")
+          .putHeader("Authorization", "Bearer $token")
+          .putHeader("Content-Type", "application/json")
+          .putHeader("Accept", "application/json")
+          .putHeader("X-Applying-Agent", "galley-agent")
+          .sendJsonObject(resource.body)
+          .coAwait()
+
+      val finalResponse =
+        if (createResponse?.statusCode() == 409) {
+          k8s
+            .patchAbs("${resource.patchUrl}?fieldManager=galley-agent")
+            //          .patch(443, "kubernetes.default.svc", "/apis/apps/v1/namespaces/$ns/deployments")
+            .putHeader("Authorization", "Bearer $token")
+            .putHeader("Content-Type", "application/json")
+            .putHeader("Accept", "application/json")
+            .putHeader("X-Applying-Agent", "galley-agent")
+            .sendJsonObject(resource.body)
+            .coAwait()
+        } else {
+          createResponse
+        }
+
+      sendDone(id, obj.getString("replyTo"), finalResponse.statusCode() in 200..299, finalResponse.body())
+    }
   }
 
   private fun sendDone(

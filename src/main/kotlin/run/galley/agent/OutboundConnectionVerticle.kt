@@ -13,7 +13,6 @@ import io.vertx.kotlin.coroutines.CoroutineEventBusSupport
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.coroutines.coAwait
 import kotlinx.coroutines.launch
-import nl.clicqo.ext.getUUID
 import java.net.URI
 import java.util.UUID
 
@@ -26,6 +25,7 @@ class OutboundConnectionVerticle :
   private var backoff = 1000L
   private lateinit var wsUrl: String
   private lateinit var vesselEngineId: String
+  private var inboundWs: WebSocketServer? = null
 
   private var sessionId: String = UUID.randomUUID().toString()
 
@@ -36,6 +36,23 @@ class OutboundConnectionVerticle :
   override suspend fun start() {
     super.start()
     println("[OutboundConnectionVerticle] Starting...")
+
+    if (config.getBoolean("allowInboundConnection", false)) {
+      println("[OutboundConnectionVerticle] Starting Inbound Websocket Server instead...")
+      val webSocketServer = WebSocketServer(vertx, config)
+
+      vertx
+        .createHttpServer()
+        .webSocketHandshakeHandler(webSocketServer.handshakeHandler())
+        .webSocketHandler(webSocketServer.connectionHandler())
+        .listen(80)
+        .coAwait()
+
+      this.inboundWs = webSocketServer
+
+      vertx.eventBus().coConsumer(PLATFORM_OUT, handler = ::sendWsMessage)
+      return
+    }
 
     val caPath = "/etc/ssl/certs/galley-rootCA.pem"
 
@@ -86,7 +103,8 @@ class OutboundConnectionVerticle :
   private suspend fun sendWsMessage(message: Message<JsonObject>) {
     val json = message.body().encode()
     println("[OutboundConnectionVerticle] Sending message to platform: $json")
-    ws
+
+    (ws ?: inboundWs?.ws)
       ?.writeTextMessage(json)
       ?.coAwait()
   }
@@ -140,7 +158,7 @@ class OutboundConnectionVerticle :
 
     wsc.exceptionHandler {
       println("[OutboundConnectionVerticle] Connection failed: ${it.message}")
-//      scheduleConnect()
+      scheduleConnect()
     }
 
     wsc.shutdownHandler {
@@ -189,39 +207,9 @@ class OutboundConnectionVerticle :
       }
     }
 
+    val connection = WebSocketConnection(vertx, config)
+
     // WS → EB: routeer commands naar K8sVerticle
-    wsc.textMessageHandler { text ->
-      println("[OutboundConnectionVerticle] Received message: $text")
-      val obj = JsonObject(text)
-      val action = obj.getString("action")
-      val payload = obj.getJsonObject("payload")
-      val replyTo = obj.getString("replyTo")
-      val vesselEngineId = obj.getUUID("vesselEngineId")
-      val requiredVesselEngineId = config.getJsonObject("galley").getUUID("vesselEngineId")
-      if (vesselEngineId == null || vesselEngineId != requiredVesselEngineId) {
-        println(
-          "[OutboundConnectionVerticle] Received invalid vessel engine ID: " +
-            "$vesselEngineId (instead of $requiredVesselEngineId)",
-        )
-        return@textMessageHandler
-      }
-
-      when (action) {
-        "agent.setMaxParallel" -> {
-          println("[OutboundConnectionVerticle] Publishing agent.setMaxParallel")
-          vertx
-            .eventBus()
-            .publish("agent.ctrl.maxParallel", JsonObject().put("id", vesselEngineId.toString()).put("payload", payload))
-        }
-
-        else -> {
-          println("[OutboundConnectionVerticle] Routing cmd.submit to action.$action")
-          vertx.eventBus().send(
-            "action.$action",
-            JsonObject().put("id", vesselEngineId.toString()).put("payload", payload).put("replyTo", replyTo),
-          )
-        }
-      }
-    }
+    wsc.textMessageHandler(connection::textMessageHandler)
   }
 }

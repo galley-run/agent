@@ -7,6 +7,7 @@ import io.vertx.kotlin.coroutines.coAwait
 
 class HealthHttpVerticle : CoroutineVerticle() {
   override suspend fun start() {
+    val port = config.getInteger("healthPort", 8080)
     val router =
       Router.router(vertx).apply {
         get("/healthz").handler { it.response().end("ok") }
@@ -14,7 +15,7 @@ class HealthHttpVerticle : CoroutineVerticle() {
     vertx
       .createHttpServer(
         HttpServerOptions()
-          .setPort(8080),
+          .setPort(port),
       ).requestHandler(router)
       .listen()
       .coAwait()
